@@ -1,0 +1,10 @@
+package.json
+package-lock.json
+yarn.lock
+dist
+
+# Source scans and catalogue data are not formatted as application code.
+covers/
+author-linking/
+chornomorska-catalog.csv
+public/catalog.json
