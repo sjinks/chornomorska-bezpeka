@@ -1,0 +1,124 @@
+name: Codex Pages preview
+
+on:
+  workflow_run:
+    workflows: [Build and deploy to Cloudflare Pages]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: codex-preview-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'codex-mvp/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      pull-requests: read
+      statuses: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      SOURCE_PATH: ${{ github.event.workflow_run.path }}
+      SOURCE_RUN: ${{ github.event.workflow_run.id }}
+      PREVIEW_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+    steps:
+      - name: Verify source run and current pull request
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_BRANCH" =~ ^codex-mvp/[0-9a-f]{24}$ ]]
+          [[ "${SOURCE_PATH%%@*}" == .github/workflows/cloudflare-pages.yml ]]
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          [[ "$PREVIEW_PROJECT" =~ ^[a-z0-9][a-z0-9-]*$ ]]
+
+          pr="$(gh api --method GET "repos/$GH_REPO/pulls" \
+            -f state=open -f "head=sjinks:$HEAD_BRANCH" -f base=master |
+            jq -er --arg sha "$HEAD_SHA" --arg repo "$GH_REPO" \
+              'map(select(.head.sha == $sha and .head.repo.full_name == $repo and .draft == false)) |
+               if length == 1 then .[0].number else empty end')"
+          jq -e --argjson pr "$pr" '.workflow_run.pull_requests | any(.number == $pr)' \
+            "$GITHUB_EVENT_PATH" >/dev/null
+
+          echo "branch=codex-preview-pr-$pr" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GH_REPO/statuses/$HEAD_SHA" -f state=pending \
+            -f context=codex-mvp/pages-preview >/dev/null
+
+      - name: Download site from approved CI run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: site-dist
+          path: dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install Wrangler
+        run: npm install --prefix "$RUNNER_TEMP/codex-wrangler" --no-audit --no-fund wrangler@4.165.0
+
+      - name: Deploy preview to Cloudflare Pages
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_BRANCH: ${{ steps.source.outputs.branch }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_API_TOKEN:?}"
+          [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]]
+          [[ "$PREVIEW_BRANCH" =~ ^codex-preview-pr-[0-9]+$ ]]
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PREVIEW_PROJECT"
+          project="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api")"
+          jq -e --arg branch "$PREVIEW_BRANCH" \
+              '.success and (.result.production_branch | type == "string" and length > 0) and .result.production_branch != $branch' \
+              <<< "$project" > /dev/null
+
+          "$RUNNER_TEMP/codex-wrangler/node_modules/.bin/wrangler" pages deploy dist \
+            --project-name="$PREVIEW_PROJECT" --branch="$PREVIEW_BRANCH" --commit-hash="$HEAD_SHA" \
+            --commit-message="Codex preview" --commit-dirty=false | tee "$RUNNER_TEMP/codex-preview.log"
+
+          url="$(grep -Eo "https://[a-f0-9]{8,32}[.]${PREVIEW_PROJECT}[.]pages[.]dev" \
+            "$RUNNER_TEMP/codex-preview.log" | sort -u)"
+          [[ "$url" =~ ^https://[a-f0-9]{8,32}[.]${PREVIEW_PROJECT}[.]pages[.]dev$ ]]
+          deployments="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/deployments?env=preview")"
+          jq -e --arg url "$url" --arg sha "$HEAD_SHA" --arg branch "$PREVIEW_BRANCH" \
+            '.success and (.result | any(.url == $url and .environment == "preview" and
+                .latest_stage.status == "success" and .deployment_trigger.metadata.commit_hash == $sha and
+                .deployment_trigger.metadata.branch == $branch))' <<< "$deployments" > /dev/null
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Publish preview status for the reviewed commit
+        if: always() && steps.source.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$PREVIEW_URL" ]]; then
+            gh api "repos/$GH_REPO/statuses/$HEAD_SHA" -f state=success \
+              -f context=codex-mvp/pages-preview -f "target_url=$PREVIEW_URL" >/dev/null
+          else
+            gh api "repos/$GH_REPO/statuses/$HEAD_SHA" -f state=failure \
+              -f context=codex-mvp/pages-preview \
+              -f "target_url=$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID" >/dev/null
+          fi
