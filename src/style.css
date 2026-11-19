@@ -16,7 +16,14 @@ body {
     max-width: 1280px;
 }
 .intro {
+    --intro-overlay: linear-gradient(90deg, rgb(10 31 40 / 92%), rgb(10 31 40 / 76%) 74%, rgb(10 31 40 / 16%));
     padding: 58px 0 40px;
+    margin-bottom: 28px;
+    color: #fff;
+    background-color: #102e39;
+    background-image: var(--intro-overlay), url('./black-sea.webp');
+    background-position: center;
+    background-size: cover;
 }
 .eyebrow {
     font-size: 11px;
@@ -25,18 +32,23 @@ body {
     font-weight: 700;
     margin-bottom: 17px;
 }
-h1 {
+.intro .eyebrow {
+    color: #c8efeb;
+}
+.intro h1 {
+    max-width: 900px;
     font:
         clamp(32px, 4.4vw, 53px)/1.15 Georgia,
         serif;
     letter-spacing: -1px;
 }
-h1 em {
+.intro h1 em {
     font-style: normal;
-    color: var(--accent);
+    color: #c8efeb;
 }
 .intro p {
-    color: #65777c;
+    max-width: 650px;
+    color: #edf8f7;
     font-size: 16px;
     line-height: 1.8;
     margin-top: 20px;
@@ -345,6 +357,12 @@ h1 em {
 a:focus-visible {
     outline: 3px solid #c69241;
     outline-offset: 3px;
+}
+@media (max-width: 991px) {
+    .intro {
+        --intro-overlay: linear-gradient(rgb(10 31 40 / 72%), rgb(10 31 40 / 80%));
+        background-position: 65% center;
+    }
 }
 @media (max-width: 575px) {
     .intro {
