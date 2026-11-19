@@ -62,36 +62,40 @@ function App(): ReactElement {
             <a className="visually-hidden-focusable skip" href="#results">
                 До результатів пошуку
             </a>
-            <main className="container pb-5">
+            <main className="pb-5">
                 <section className="intro">
-                    <div className="eyebrow">ЕЛЕКТРОННА БІБЛІОТЕКА · 2005–2013</div>
-                    <h1>
-                        Часопис <em>«Чорноморська Безпека»</em>. Севастопольський архів (2005—2013)
-                    </h1>
-                    <p>Статті севастопольських номерів журналу про безпеку, геополітику та Чорноморський регіон.</p>
+                    <div className="container">
+                        <div className="eyebrow">ЕЛЕКТРОННА БІБЛІОТЕКА · 2005–2013</div>
+                        <h1>
+                            Часопис <em>«Чорноморська Безпека»</em>. Севастопольський архів (2005—2013)
+                        </h1>
+                        <p>Статті севастопольських номерів журналу про безпеку, геополітику та Чорноморський регіон.</p>
+                    </div>
                 </section>
-                <AboutJournal />
-                {catalog && !hasLoadError && (
-                    <IssueGallery issues={issues} selectedIssue={filters.issue} onSelect={selectIssue} />
-                )}
-                <div className="row g-4 align-items-start">
-                    <SearchPanel
-                        catalog={catalog}
-                        draft={draft}
-                        onChange={setDraft}
-                        onSearch={submitSearch}
-                        onReset={resetFilters}
-                    />
-                    <section className="col-lg-8 col-xl-9" id="results" aria-label="Результати пошуку">
-                        <SearchResults
+                <div className="container">
+                    <AboutJournal />
+                    {catalog && !hasLoadError && (
+                        <IssueGallery issues={issues} selectedIssue={filters.issue} onSelect={selectIssue} />
+                    )}
+                    <div className="row g-4 align-items-start">
+                        <SearchPanel
                             catalog={catalog}
-                            hasLoadError={hasLoadError}
-                            filters={filters}
-                            onFiltersChange={applyFilters}
-                            onRetry={retry}
+                            draft={draft}
+                            onChange={setDraft}
+                            onSearch={submitSearch}
                             onReset={resetFilters}
                         />
-                    </section>
+                        <section className="col-lg-8 col-xl-9" id="results" aria-label="Результати пошуку">
+                            <SearchResults
+                                catalog={catalog}
+                                hasLoadError={hasLoadError}
+                                filters={filters}
+                                onFiltersChange={applyFilters}
+                                onRetry={retry}
+                                onReset={resetFilters}
+                            />
+                        </section>
+                    </div>
                 </div>
             </main>
             <footer className="container footer">
