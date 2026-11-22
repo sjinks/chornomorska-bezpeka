@@ -93,7 +93,7 @@ export function SearchResults({
     return (
         <>
             {selectedIssue && (
-                <div className="selected-issue">
+                <div className="selected-issue" key={selectedIssue.value}>
                     <IssueCover issue={selectedIssue} />
                     <div>
                         <div className="eyebrow">ВИБРАНИЙ НОМЕР</div>
